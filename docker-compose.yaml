@@ -1,0 +1,18 @@
+services:
+  gateway-api:
+    container_name: gateway-api
+    image: gateway-api:1.0.0
+    build: .
+    networks:
+      - biofin_network
+    volumes:
+      - .:/usr/src/application
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env.dev
+
+networks:
+  biofin_network:
+    external: true
