@@ -15,7 +15,7 @@ setup_logging()
 logger = logging.getLogger(__name__)
 
 REMOTE_SERVICE_URL = "http://physical-api:8020"
-REMOTE_PREFIX = "/workflow"
+REMOTE_PREFIX = ""
 
 HOP_BY_HOP_HEADERS = {
     "connection",
@@ -63,7 +63,8 @@ app.include_router(api_router)
 
 @app.api_route(
     f"{REMOTE_PREFIX}" + "/{path:path}",
-    methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"],
+    include_in_schema=False
 )
 async def reverse_proxy(path: str, request: Request):
     client: httpx.AsyncClient = request.app.state.http_client
