@@ -13,3 +13,4 @@ api_router.include_router(status.router,
 api_router.include_router(auth.router,
                           prefix=f"{std_prefix}/auth",
                           tags=["Authorisation"])
+
