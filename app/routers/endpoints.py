@@ -1,6 +1,5 @@
 from fastapi import APIRouter, Depends
 from app.routers import status, auth_proxy, physical_layer_proxy
-from app.deps.user_auth import get_current_user, CurrentUser
 
 api_router = APIRouter()
 
@@ -20,6 +19,5 @@ api_router.include_router(
 api_router.include_router(
     physical_layer_proxy.router,
     prefix="/api",
-    tags=["Physical Layer"],
-    dependencies=[Depends(get_current_user)],
+    tags=["Physical Layer"]
 )
