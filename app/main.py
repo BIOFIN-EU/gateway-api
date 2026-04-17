@@ -1,54 +1,44 @@
 import logging
-import httpx
-
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, Response
+
+import httpx
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
-from fastapi.security import OAuth2PasswordBearer
 
-from app.routers.endpoints import api_router
+from app.core.settings import settings
 from app.logging_config import setup_logging
+from app.routers.endpoints import api_router
 
 
 setup_logging()
 logger = logging.getLogger(__name__)
 
-REMOTE_SERVICE_URL = "http://physical-api:8020"
-REMOTE_PREFIX = ""
-
-HOP_BY_HOP_HEADERS = {
-    "connection",
-    "keep-alive",
-    "proxy-authenticate",
-    "proxy-authorization",
-    "te",
-    "trailers",
-    "transfer-encoding",
-    "upgrade",
-    "host",
-}
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    app.state.http_client = httpx.AsyncClient(
-        base_url=REMOTE_SERVICE_URL,
+    app.state.physical_client = httpx.AsyncClient(
+        base_url=settings.PHYSICAL_API_URL,
         follow_redirects=True,
         timeout=30.0,
     )
-    logger.info("Started proxy http client")
+    app.state.auth_client = httpx.AsyncClient(
+        base_url=settings.AUTH_URL,
+        follow_redirects=True,
+        timeout=30.0,
+    )
+
+    logger.info("Started upstream http clients")
     yield
-    await app.state.http_client.aclose()
-    logger.info("Closed proxy http client")
+    await app.state.physical_client.aclose()
+    await app.state.auth_client.aclose()
+    logger.info("Closed upstream http clients")
 
 
 app = FastAPI(
     title="Gateway API",
     lifespan=lifespan,
 )
-
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 app.add_middleware(
     CORSMiddleware,
@@ -61,44 +51,6 @@ app.add_middleware(
 app.include_router(api_router)
 
 
-@app.api_route(
-    f"{REMOTE_PREFIX}" + "/{path:path}",
-    methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"],
-    include_in_schema=False
-)
-async def reverse_proxy(path: str, request: Request):
-    client: httpx.AsyncClient = request.app.state.http_client
-
-    upstream_headers = {
-        key: value
-        for key, value in request.headers.items()
-        if key.lower() not in HOP_BY_HOP_HEADERS
-    }
-
-    body = await request.body()
-
-    upstream_response = await client.request(
-        method=request.method,
-        url=f"/{path}",
-        params=request.query_params,
-        headers=upstream_headers,
-        content=body,
-    )
-
-    response_headers = {
-        key: value
-        for key, value in upstream_response.headers.items()
-        if key.lower() not in HOP_BY_HOP_HEADERS
-    }
-
-    return Response(
-        content=upstream_response.content,
-        status_code=upstream_response.status_code,
-        headers=response_headers,
-        media_type=upstream_response.headers.get("content-type"),
-    )
-
-
 def custom_openapi():
     if app.openapi_schema:
         return app.openapi_schema
@@ -109,26 +61,29 @@ def custom_openapi():
         routes=app.routes,
     )
 
-    # Try to pull in the remote service schema
-    # This makes remote endpoints show up in THIS app's Swagger UI.
-    try:
-        with httpx.Client(base_url=REMOTE_SERVICE_URL, timeout=10.0) as client:
-            remote_schema = client.get("/openapi.json").json()
+    remote_services = [
+        ("physical", settings.PHYSICAL_API_URL, ""),
+        ("auth", settings.AUTH_URL, ""),
+    ]
 
-        schema.setdefault("paths", {})
-        for path, path_item in remote_schema.get("paths", {}).items():
-            schema["paths"][f"{REMOTE_PREFIX}{path}"] = path_item
+    for service_name, base_url, prefix in remote_services:
+        try:
+            with httpx.Client(base_url=base_url, timeout=10.0) as client:
+                remote_schema = client.get("/openapi.json").json()
 
-        # Merge components
-        schema.setdefault("components", {})
-        for section, values in remote_schema.get("components", {}).items():
-            schema["components"].setdefault(section, {})
-            schema["components"][section].update(values)
+            schema.setdefault("paths", {})
+            for path, path_item in remote_schema.get("paths", {}).items():
+                schema["paths"][f"{prefix}{path}"] = path_item
 
-        logger.info("Merged remote OpenAPI schema successfully")
+            schema.setdefault("components", {})
+            for section, values in remote_schema.get("components", {}).items():
+                schema["components"].setdefault(section, {})
+                schema["components"][section].update(values)
 
-    except Exception as exc:
-        logger.warning("Could not merge remote OpenAPI schema: %s", exc)
+            logger.info("Merged %s OpenAPI schema successfully", service_name)
+
+        except Exception as exc:
+            logger.warning("Could not merge %s OpenAPI schema: %s", service_name, exc)
 
     app.openapi_schema = schema
     return app.openapi_schema

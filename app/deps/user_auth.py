@@ -9,7 +9,14 @@ bearer_scheme = HTTPBearer(auto_error=True)
 
 
 class CurrentUser:
-    def __init__(self, email: str, roles: List[str], permissions: List[str]):
+    def __init__(
+        self,
+        user_id: str,
+        email: str | None,
+        roles: List[str],
+        permissions: List[str],
+    ):
+        self.user_id = user_id
         self.email = email
         self.roles = roles
         self.permissions = permissions
@@ -27,17 +34,29 @@ async def get_current_user(
             algorithms=[settings.JWT_ALGORITHM],
         )
 
-        email = payload.get("sub")
+        user_id = payload.get("sub")
+        email = payload.get("email")
         roles = payload.get("roles", [])
         permissions = payload.get("permissions", [])
 
-        if not email:
-            raise HTTPException(status_code=401, detail="Invalid token")
+        if not user_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token",
+            )
 
-        return CurrentUser(email, roles, permissions)
+        return CurrentUser(
+            user_id=user_id,
+            email=email,
+            roles=roles,
+            permissions=permissions,
+        )
 
     except JWTError:
-        raise HTTPException(status_code=401, detail="Invalid token")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token",
+        )
 
 
 def require_role(role: str):
@@ -50,6 +69,7 @@ def require_role(role: str):
         return user
     return _dep
 
+
 def require_permission(permission: str):
     def _dep(user: CurrentUser = Depends(get_current_user)):
         if permission not in user.permissions:
@@ -59,6 +79,7 @@ def require_permission(permission: str):
             )
         return user
     return _dep
+
 
 async def require_user(user: CurrentUser = Depends(get_current_user)):
     return user
