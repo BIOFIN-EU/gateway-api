@@ -35,7 +35,7 @@ async def physical_layer_reverse_proxy(path: str, request: Request):
 
     upstream_response = await client.request(
         method=request.method,
-        url=f"/{path}",
+        url=f"/api/{path}",
         params=request.query_params,
         headers=upstream_headers,
         content=body,

@@ -2,7 +2,6 @@ import logging
 import httpx
 
 from fastapi import APIRouter, Request, Response
-
 from app.core.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -19,6 +18,7 @@ HOP_BY_HOP_HEADERS = {
     "upgrade",
     "host",
 }
+
 
 def build_upstream_headers(request: Request) -> dict[str, str]:
     headers = {
@@ -46,7 +46,7 @@ async def auth_reverse_proxy(path: str, request: Request):
 
     upstream_response = await client.request(
         method=request.method,
-        url=f"{path}",
+        url=f"/api/auth/{path}",
         params=request.query_params,
         headers=upstream_headers,
         content=body,

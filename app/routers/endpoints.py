@@ -9,14 +9,15 @@ api_router.include_router(
     tags=["API Status"],
 )
 
+# More specific route first
 api_router.include_router(
     auth_proxy.router,
-    prefix="",
+    prefix="/api/auth",
     tags=["Authorisation"],
 )
 
 api_router.include_router(
     physical_layer_proxy.router,
-    prefix="",
+    prefix="/api",
     tags=["Physical Layer"],
 )
