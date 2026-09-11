@@ -5,6 +5,7 @@ class Settings(BaseSettings):
     # --- service connections ---
     AUTH_URL: str
     PHYSICAL_API_URL: str
+    RISK_API_URL: str
 
     # --- service-to-service auth ---
     AUTH_CLIENT_ID: str

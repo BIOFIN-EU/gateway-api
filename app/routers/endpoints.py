@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends
-from app.routers import status, auth_proxy, physical_layer_proxy
+from app.routers import status, auth_proxy, physical_layer_proxy, risk_proxy
 
 api_router = APIRouter()
 
@@ -15,6 +15,12 @@ api_router.include_router(
     prefix="/api/auth",
     tags=["Authorisation"],
 )
+api_router.include_router(
+    risk_proxy.router,
+    prefix="/api/vulnerability",
+    tags=["Risk Framework"]
+)
+
 
 api_router.include_router(
     physical_layer_proxy.router,

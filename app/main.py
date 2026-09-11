@@ -27,11 +27,17 @@ async def lifespan(app: FastAPI):
         follow_redirects=True,
         timeout=30.0,
     )
+    app.state.risk_client = httpx.AsyncClient(
+        base_url=settings.RISK_API_URL,
+        follow_redirects=True,
+        timeout=30.0,
+    )
 
     logger.info("Started upstream http clients")
     yield
     await app.state.physical_client.aclose()
     await app.state.auth_client.aclose()
+    await app.state.risk_client.aclose()
     logger.info("Closed upstream http clients")
 
 
@@ -64,6 +70,7 @@ def custom_openapi():
     remote_services = [
         ("physical", settings.PHYSICAL_API_URL, ""),
         ("auth", settings.AUTH_URL, ""),
+        ("risk", settings.RISK_API_URL, ""),
     ]
 
     for service_name, base_url, prefix in remote_services:
