@@ -2,7 +2,9 @@
 import logging
 
 import httpx
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, HTTPException, Request, Response
+
+from app.core.internal import GATEWAY_ONLY_HEADERS, has_internal_secret, user_from_token
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +28,15 @@ def build_upstream_headers(request: Request) -> dict[str, str]:
         key: value
         for key, value in request.headers.items()
         if key.lower() not in HOP_BY_HOP_HEADERS
+        and key.lower() not in GATEWAY_ONLY_HEADERS
     }
+
+
+def is_allowed(request: Request) -> bool:
+    """Signed-in users (the Vulnerability tab), and physical-api."""
+    authorization = request.headers.get("authorization", "")
+    token = authorization[7:] if authorization.lower().startswith("bearer ") else None
+    return user_from_token(token) is not None or has_internal_secret(request)
 
 
 @router.api_route(
@@ -35,6 +45,9 @@ def build_upstream_headers(request: Request) -> dict[str, str]:
     include_in_schema=False,
 )
 async def risk_reverse_proxy(path: str, request: Request):
+    # The framework's calculations are expensive: not open to anyone.
+    if not is_allowed(request):
+        raise HTTPException(status_code=401, detail="Not authenticated")
     logger.debug(f"Proxying {request.method} risk-framework/{path} -> /api/v1/{path}")
     client: httpx.AsyncClient = request.app.state.risk_client
 
