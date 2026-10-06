@@ -11,6 +11,10 @@ class Settings(BaseSettings):
     AUTH_CLIENT_ID: str
     AUTH_CLIENT_SECRET: str
 
+    # Shared with physical-api: sent on every request to it, so it knows the
+    # request (and the user in X-User-Id) comes from the gateway.
+    INTERNAL_API_SECRET: str
+
     # JWT verification
     JWT_SECRET_KEY: str
     JWT_ALGORITHM: str = "HS256"

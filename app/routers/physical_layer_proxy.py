@@ -5,10 +5,8 @@ logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import JWTError, jwt
 
-from app.core.settings import settings
-from app.dependencies.user_auth import CurrentUser
+from app.core.internal import GATEWAY_ONLY_HEADERS, internal_headers, user_from_token
 
 # Paths (relative to this router's /api mount, i.e. without a leading /api/)
 # that the /support contact form needs to reach without being logged in.
@@ -29,12 +27,6 @@ HOP_BY_HOP_HEADERS = {
     "host",
 }
 
-TRUSTED_IDENTITY_HEADERS = {
-    "x-user-id",
-    "x-user-roles",
-    "x-user-permissions",
-}
-
 router = APIRouter()
 
 
@@ -50,24 +42,7 @@ async def physical_layer_reverse_proxy(
 ):
     is_public_path = path in PUBLIC_PROXY_PATHS
 
-    current_user: CurrentUser | None = None
-
-    if creds:
-        try:
-            payload = jwt.decode(
-                creds.credentials,
-                settings.JWT_SECRET_KEY,
-                algorithms=[settings.JWT_ALGORITHM],
-            )
-            user_id = payload.get("sub")
-            if user_id:
-                current_user = CurrentUser(
-                    user_id,
-                    payload.get("roles", []),
-                    payload.get("permissions", []),
-                )
-        except JWTError:
-            current_user = None
+    current_user = user_from_token(creds.credentials if creds else None)
 
     if current_user is None and not is_public_path:
         raise HTTPException(status_code=401, detail="Not authenticated")
@@ -78,15 +53,9 @@ async def physical_layer_reverse_proxy(
         key: value
         for key, value in request.headers.items()
         if key.lower() not in HOP_BY_HOP_HEADERS
-        and key.lower() not in TRUSTED_IDENTITY_HEADERS
+        and key.lower() not in GATEWAY_ONLY_HEADERS
     }
-
-    if current_user:
-        logger.debug(f"UUID = {current_user.user_id}, Roles = {current_user.roles}, Permissions = {current_user.permissions}")
-
-        upstream_headers["X-User-Id"] = str(current_user.user_id)
-        upstream_headers["X-User-Roles"] = ",".join(current_user.roles or [])
-        upstream_headers["X-User-Permissions"] = ",".join(current_user.permissions or [])
+    upstream_headers.update(internal_headers(current_user))
 
     body = await request.body()
 

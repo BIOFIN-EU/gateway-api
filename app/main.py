@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 
+from app.core.internal import internal_headers
 from app.core.settings import settings
 from app.logging_config import setup_logging
 from app.routers.endpoints import api_router
@@ -76,7 +77,7 @@ def custom_openapi():
     for service_name, base_url, prefix in remote_services:
         try:
             with httpx.Client(base_url=base_url, timeout=10.0) as client:
-                remote_schema = client.get("/openapi.json").json()
+                remote_schema = client.get("/openapi.json", headers=internal_headers(None)).json()
 
             schema.setdefault("paths", {})
             for path, path_item in remote_schema.get("paths", {}).items():
