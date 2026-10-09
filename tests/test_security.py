@@ -130,3 +130,29 @@ def test_risk_framework_needs_a_user_or_physical_api(client, upstream):
     ).status_code == 200
     # The secret isn't passed on.
     assert all("x-internal-secret" not in request.headers for _, request in calls)
+
+
+# ---------- request size ----------
+
+def test_uploads_over_the_limit_are_refused_before_reaching_physical_api(client, upstream):
+    from app.routers.physical_layer_proxy import MAX_REQUEST_BYTES
+
+    calls, _ = upstream
+    auth = {"Authorization": f"Bearer {_token()}"}
+    url = "/api/case_workflow/cases/1/submit-file?field_name=supporting_document"
+
+    small = client.post(url, headers=auth, files={"file": ("report.pdf", b"%PDF-1.4 small", "application/pdf")})
+    assert small.status_code == 200 and len(calls) == 1
+
+    big = b"0" * (MAX_REQUEST_BYTES + 1)
+    response = client.post(url, headers=auth, files={"file": ("big.pdf", big, "application/pdf")})
+    assert response.status_code == 413
+    assert response.json()["detail"] == "The upload is larger than 20 MB."
+
+    # Without a declared length (a streamed body), the limit still holds.
+    def chunks():
+        for _ in range(22):
+            yield b"0" * (1024 * 1024)
+    response = client.post(url, headers=auth, content=chunks())
+    assert response.status_code == 413
+    assert len(calls) == 1

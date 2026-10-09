@@ -15,6 +15,12 @@ PUBLIC_PROXY_PATHS = {"support/contact"}
 
 optional_bearer = HTTPBearer(auto_error=False)
 
+# Largest request passed on: physical-api accepts files up to 20 MB, plus
+# room for the rest of the upload form. Checked before the body is read
+# into memory.
+MAX_REQUEST_BYTES = 21 * 1024 * 1024
+TOO_LARGE = "The upload is larger than 20 MB."
+
 HOP_BY_HOP_HEADERS = {
     "connection",
     "keep-alive",
@@ -28,6 +34,19 @@ HOP_BY_HOP_HEADERS = {
 }
 
 router = APIRouter()
+
+
+async def _read_body(request: Request) -> bytes:
+    """The request body, refused (413) once it's over MAX_REQUEST_BYTES."""
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > MAX_REQUEST_BYTES:
+        raise HTTPException(status_code=413, detail=TOO_LARGE)
+    body = bytearray()
+    async for chunk in request.stream():
+        body.extend(chunk)
+        if len(body) > MAX_REQUEST_BYTES:
+            raise HTTPException(status_code=413, detail=TOO_LARGE)
+    return bytes(body)
 
 
 @router.api_route(
@@ -57,7 +76,7 @@ async def physical_layer_reverse_proxy(
     }
     upstream_headers.update(internal_headers(current_user))
 
-    body = await request.body()
+    body = await _read_body(request)
 
     upstream_response = await client.request(
         method=request.method,
